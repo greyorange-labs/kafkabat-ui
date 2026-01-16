@@ -62,8 +62,7 @@ jobs:
   docker-deploy:
     needs: [ jar-build, docker-build ]
     permissions:
-      packages: write
-      id-token: write # Required to authenticate with OIDC for AWS
+      contents: read
     uses: ./.github/workflows/docker_publish.yml
     secrets: inherit
     with:
