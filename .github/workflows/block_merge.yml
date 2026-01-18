@@ -2,20 +2,53 @@ name: "Infra: PR block merge"
 on:
   pull_request:
     types: [opened, labeled, unlabeled, synchronize]
+
+permissions:
+  checks: write
+  pull-requests: read
+
 jobs:
   block_merge:
     runs-on: ubuntu-latest
     steps:
-      - uses: mheap/github-action-required-labels@388fd6af37b34cdfe5a23b37060e763217e58b03 # infered from @v5
+      - name: Check for blocking labels
+        uses: actions/github-script@v7
         with:
-          mode: exactly
-          count: 0
-          labels: >
-            status/blocked,
-            status/needs-attention,
-            status/on-hold,
-            status/pending,
-            status/triage,
-            status/pending-backend,
-            status/pending-frontend,
-            status/pending-QA
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const blockingLabels = [
+              'status/blocked',
+              'status/needs-attention',
+              'status/on-hold',
+              'status/pending',
+              'status/triage',
+              'status/pending-backend',
+              'status/pending-frontend',
+              'status/pending-QA'
+            ];
+            
+            const prLabels = (pr.labels || []).map(label => label.name);
+            const hasBlockingLabel = blockingLabels.some(label => prLabels.includes(label));
+            
+            // Create a check run
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Block Merge Check',
+              head_sha: pr.head.sha,
+              status: 'completed',
+              conclusion: hasBlockingLabel ? 'failure' : 'success',
+              output: {
+                title: hasBlockingLabel 
+                  ? 'Blocking labels detected' 
+                  : 'No blocking labels found',
+                summary: hasBlockingLabel
+                  ? `PR cannot be merged. Found blocking label(s): ${prLabels.filter(l => blockingLabels.includes(l)).join(', ')}`
+                  : 'PR is clear of blocking labels and can be merged.'
+              }
+            });
+            
+            if (hasBlockingLabel) {
+              core.setFailed(`PR has blocking label(s). Please remove: ${prLabels.filter(l => blockingLabels.includes(l)).join(', ')}`);
+            }

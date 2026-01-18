@@ -1,4 +1,4 @@
-name: "PR: Checklist linter"
+name: "PR: JIRA Number Check"
 
 on:
   pull_request_target:
@@ -6,14 +6,42 @@ on:
 
 permissions:
   checks: write
+  pull-requests: read
 
 jobs:
-  check-tasks:
+  check-jira:
     runs-on: ubuntu-latest
     steps:
-      - uses: kentaro-m/task-completed-checker-action@2ddb65fdd5577bae4a8e82e0564e459677aec893 # infered from @v0.1.2
+      - name: Check for JIRA number
+        uses: actions/github-script@v7
         with:
-          repo-token: "${{ secrets.GITHUB_TOKEN }}"
-      - uses: dekinderfiets/pr-description-enforcer@f6a858878d694ff5b2760380fbcd21129030c5dd # infered from @v0.0.1
-        with:
-          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = context.payload.pull_request;
+            const description = pr.body || '';
+            
+            // Pattern: GM- followed by digits (e.g., GM-22222)
+            const jiraPattern = /GM-\d+/;
+            const hasJiraNumber = jiraPattern.test(description);
+            
+            // Create a check run
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'JIRA Number Check',
+              head_sha: pr.head.sha,
+              status: 'completed',
+              conclusion: hasJiraNumber ? 'success' : 'failure',
+              output: {
+                title: hasJiraNumber 
+                  ? 'JIRA number found in PR description' 
+                  : 'JIRA number is required in PR description',
+                summary: hasJiraNumber
+                  ? `Found JIRA number matching pattern GM-XXXXX`
+                  : `PR description must contain a JIRA number in the format **GM-XXXXX** (e.g., GM-22222).\n\nPlease add the JIRA number to your PR description.`
+              }
+            });
+            
+            if (!hasJiraNumber) {
+              core.setFailed('PR description must contain a JIRA number in the format GM-XXXXX (e.g., GM-22222)');
+            }
