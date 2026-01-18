@@ -46,16 +46,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Set container registry env vars
-        run: |
-          echo "REGISTRY=docker.io" >> $GITHUB_ENV
-          REPO_NAME=$(basename ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
-          DOCKERHUB_USER=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
-          echo "REPOSITORY=${DOCKERHUB_USER}/${REPO_NAME}" >> $GITHUB_ENV
-
       - name: Push images to Docker Hub
         run: |
-          docker tag kafka-ui:temp ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ inputs.generic_tag }}
-          docker tag kafka-ui:temp ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ inputs.version }}
-          docker push ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ inputs.generic_tag }}
-          docker push ${{ env.REGISTRY }}/${{ env.REPOSITORY }}:${{ inputs.version }}
+          REPO_NAME=$(basename ${{ github.repository }} | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          DOCKERHUB_USER=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          IMAGE_NAME="${DOCKERHUB_USER}/${REPO_NAME}"
+          
+          echo "Pushing to: docker.io/${IMAGE_NAME}"
+          echo "Tags: ${{ inputs.generic_tag }}, ${{ inputs.version }}"
+          
+          docker tag kafka-ui:temp docker.io/${IMAGE_NAME}:${{ inputs.generic_tag }}
+          docker tag kafka-ui:temp docker.io/${IMAGE_NAME}:${{ inputs.version }}
+          docker push docker.io/${IMAGE_NAME}:${{ inputs.generic_tag }}
+          docker push docker.io/${IMAGE_NAME}:${{ inputs.version }}
