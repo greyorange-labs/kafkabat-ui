@@ -49,7 +49,8 @@ jobs:
       - name: Set container registry env vars
         run: |
           echo "REGISTRY=docker.io" >> $GITHUB_ENV
-          echo "REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+          REPO_NAME=$(basename ${{ github.repository }})
+          echo "REPOSITORY=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME}" >> $GITHUB_ENV
 
       - name: Push images to Docker Hub
         run: |
