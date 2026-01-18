@@ -75,6 +75,7 @@ public class LdapSecurityConfig extends AbstractAuthSecurityConfig {
     } else {
       authProvider = new LdapAuthenticationProvider(ba, authoritiesExtractor);
     }
+    
 
     if (rbacEnabled) {
       authProvider.setUserDetailsContextMapper(new RbacUserDetailsMapper());
