@@ -2,9 +2,15 @@ name: "Feature Testing: Build and Push Docker Image"
 
 on:
   workflow_dispatch:
-
-  pull_request:
-    types: ['labeled']
+    inputs:
+      branch:
+        description: 'Branch name to checkout'
+        required: true
+        type: string
+      commit_hash:
+        description: 'Commit hash (full or short - first 7 chars will be used)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -12,26 +18,26 @@ permissions:
 
 jobs:
   build-and-push:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'status/feature_testing' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # infered from @v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.commit_hash }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get branch tag and repo name
         id: extract_info
         run: |
-          if [ -n "${{ github.event.pull_request.number }}" ]; then
-            tag='pr${{ github.event.pull_request.number }}'
-          else
-            tag='manual-${GITHUB_SHA::7}'
-          fi
+          # Use first 7 characters of commit hash for tag
+          commit_short="${INPUT_COMMIT_HASH:0:7}"
+          tag="branch-${INPUT_BRANCH//\//-}-${commit_short}"
           echo "tag=${tag}" >> $GITHUB_OUTPUT
           repo_name=$(basename ${{ github.repository }})
           echo "repo_name=${repo_name}" >> $GITHUB_OUTPUT
+        env:
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_COMMIT_HASH: ${{ inputs.commit_hash }}
 
       - name: Set up JDK
         uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12 # infered from @v4
@@ -43,12 +49,15 @@ jobs:
       - name: Build JAR
         id: build
         run: |
-          version=${GITHUB_SHA::7}
+          # Use first 7 characters of commit hash
+          version="${INPUT_COMMIT_HASH:0:7}"
           echo "version=$version" >> $GITHUB_OUTPUT
           ./gradlew clean build \
             -x test \
             -Pinclude-frontend=true \
             -Pversion=$version
+        env:
+          INPUT_COMMIT_HASH: ${{ inputs.commit_hash }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # infered from @v3
@@ -61,7 +70,7 @@ jobs:
         uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf # infered from @v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ inputs.commit_hash }}
           restore-keys: |
             ${{ runner.os }}-buildx-
 
@@ -85,12 +94,3 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
 
-      - name: Update status check
-        if: github.event_name == 'pull_request'
-        uses: Sibz/github-status-action@650dd1a882a76dbbbc4576fb5974b8d22f29847f # infered from @v1.1.6
-        with:
-          authToken: ${{ secrets.GITHUB_TOKEN }}
-          context: "Docker Image Built"
-          state: "success"
-          sha: ${{ github.event.pull_request.head.sha }}
-          target_url: "https://hub.docker.com/r/${{ secrets.DOCKERHUB_USERNAME }}/${{ steps.extract_info.outputs.repo_name }}/tags"

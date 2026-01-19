@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # infered from @v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.release.target_commitish || github.sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: |
@@ -35,7 +35,7 @@ jobs:
       - name: Build jar
         id: build
         run: |
-          version=${{ github.event.release.tag_name }}
+          version=${GITHUB_SHA::7}
           echo "version=$version" >> $GITHUB_OUTPUT
           ./gradlew clean build \
           -x test \
@@ -47,7 +47,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: api/build/libs/api-${{ steps.build.outputs.version }}.jar
-          tag: ${{ github.event.release.tag_name }}
+          tag: ${{ github.event.release.tag_name || format('sha-{0}', steps.build.outputs.version) }}
 
       - name: Archive JAR
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # infered from @v4
