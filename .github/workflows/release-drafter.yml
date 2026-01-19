@@ -33,12 +33,12 @@ jobs:
         with:
           config-name: release_drafter.yaml
 
-      - name: Filter contributors from yesterday onwards
+      - name: Filter contributors from January 17 onwards
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Calculate yesterday's date (UTC)
-          YESTERDAY=$(python3 -c "from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d'))")
+          # Set cutoff date to January 17, 2025
+          CUTOFF_DATE="2025-01-17"
           
           # Get the latest draft release
           DRAFT_RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.draft == true) | .id' | head -1)
@@ -52,22 +52,22 @@ jobs:
           RELEASE_BODY=$(gh api repos/${{ github.repository }}/releases/$DRAFT_RELEASE_ID --jq -r '.body')
           
           # Extract contributors section using Python for better reliability
-          python3 << PYTHON_SCRIPT
+          python3 << EOF
           import re
           import sys
           import subprocess
-          from datetime import datetime
+          from datetime import datetime, timezone
           import json
           import urllib.request
           
           release_body = """$RELEASE_BODY"""
-          yesterday_str = "$YESTERDAY"
+          cutoff_date_str = "$CUTOFF_DATE"
           draft_release_id = "$DRAFT_RELEASE_ID"
           repo = "${{ github.repository }}"
           token = "$GITHUB_TOKEN"
           
-          # Parse yesterday date
-          yesterday = datetime.strptime(yesterday_str, '%Y-%m-%d')
+          # Parse cutoff date (January 17, 2025)
+          cutoff_date = datetime.strptime(cutoff_date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
           
           # Extract contributors section
           contributors_match = re.search(r'## Contributors\n(.*?)(?=\n## |$)', release_body, re.DOTALL)
@@ -77,13 +77,12 @@ jobs:
               sys.exit(0)
           
           contributors_section = contributors_match.group(1)
-          contributors_text = contributors_match.group(0)
           
           # Extract all @usernames
           usernames = re.findall(r'@([a-zA-Z0-9_-]+)', contributors_section)
           unique_usernames = list(set(usernames))
           
-          # Filter contributors who first appeared from yesterday onwards
+          # Filter contributors who first appeared from January 17, 2025 onwards
           filtered_contributors = []
           for username in unique_usernames:
               try:
@@ -98,10 +97,10 @@ jobs:
                   if result.returncode == 0 and result.stdout.strip():
                       first_commit_line = result.stdout.strip().split('\n')[0]
                       first_commit_date_str = first_commit_line.split()[0]  # Get date part (YYYY-MM-DD)
-                      first_commit_date = datetime.strptime(first_commit_date_str, '%Y-%m-%d')
+                      first_commit_date = datetime.strptime(first_commit_date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
                       
-                      # Include if first commit is from yesterday or later
-                      if first_commit_date >= yesterday:
+                      # Include if first commit is from January 17, 2025 or later
+                      if first_commit_date >= cutoff_date:
                           filtered_contributors.append(f"@{username}")
               except Exception as e:
                   print(f"Error checking {username}: {e}", file=sys.stderr)
@@ -111,7 +110,6 @@ jobs:
           # Rebuild contributors section
           if filtered_contributors:
               # Keep original format but only include filtered contributors
-              # Extract the format from original (usually just @username per line)
               new_contributors_section = "## Contributors\n\n" + "\n".join(sorted(set(filtered_contributors)))
           else:
               # Remove contributors section entirely
@@ -139,4 +137,4 @@ jobs:
           except Exception as e:
               print(f"Error updating release: {e}", file=sys.stderr)
               sys.exit(1)
-          PYTHON_SCRIPT
+          EOF
