@@ -21,8 +21,122 @@ jobs:
   update_release_draft:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # infered from @v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: release-drafter/release-drafter@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           config-name: release_drafter.yaml
+
+      - name: Filter contributors from yesterday onwards
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Calculate yesterday's date (UTC)
+          YESTERDAY=$(python3 -c "from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d'))")
+          
+          # Get the latest draft release
+          DRAFT_RELEASE_ID=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.draft == true) | .id' | head -1)
+          
+          if [ -z "$DRAFT_RELEASE_ID" ]; then
+            echo "No draft release found"
+            exit 0
+          fi
+          
+          # Get release body
+          RELEASE_BODY=$(gh api repos/${{ github.repository }}/releases/$DRAFT_RELEASE_ID --jq -r '.body')
+          
+          # Extract contributors section using Python for better reliability
+          python3 << PYTHON_SCRIPT
+          import re
+          import sys
+          import subprocess
+          from datetime import datetime
+          import json
+          import urllib.request
+          
+          release_body = """$RELEASE_BODY"""
+          yesterday_str = "$YESTERDAY"
+          draft_release_id = "$DRAFT_RELEASE_ID"
+          repo = "${{ github.repository }}"
+          token = "$GITHUB_TOKEN"
+          
+          # Parse yesterday date
+          yesterday = datetime.strptime(yesterday_str, '%Y-%m-%d')
+          
+          # Extract contributors section
+          contributors_match = re.search(r'## Contributors\n(.*?)(?=\n## |$)', release_body, re.DOTALL)
+          
+          if not contributors_match:
+              print("No contributors section found")
+              sys.exit(0)
+          
+          contributors_section = contributors_match.group(1)
+          contributors_text = contributors_match.group(0)
+          
+          # Extract all @usernames
+          usernames = re.findall(r'@([a-zA-Z0-9_-]+)', contributors_section)
+          unique_usernames = list(set(usernames))
+          
+          # Filter contributors who first appeared from yesterday onwards
+          filtered_contributors = []
+          for username in unique_usernames:
+              try:
+                  # Get first commit date for this contributor using git
+                  result = subprocess.run(
+                      ['git', 'log', '--author', username, '--format=%ai', '--reverse'],
+                      capture_output=True,
+                      text=True,
+                      timeout=10
+                  )
+                  
+                  if result.returncode == 0 and result.stdout.strip():
+                      first_commit_line = result.stdout.strip().split('\n')[0]
+                      first_commit_date_str = first_commit_line.split()[0]  # Get date part (YYYY-MM-DD)
+                      first_commit_date = datetime.strptime(first_commit_date_str, '%Y-%m-%d')
+                      
+                      # Include if first commit is from yesterday or later
+                      if first_commit_date >= yesterday:
+                          filtered_contributors.append(f"@{username}")
+              except Exception as e:
+                  print(f"Error checking {username}: {e}", file=sys.stderr)
+                  # If we can't determine, exclude to be safe
+                  continue
+          
+          # Rebuild contributors section
+          if filtered_contributors:
+              # Keep original format but only include filtered contributors
+              # Extract the format from original (usually just @username per line)
+              new_contributors_section = "## Contributors\n\n" + "\n".join(sorted(set(filtered_contributors)))
+          else:
+              # Remove contributors section entirely
+              new_contributors_section = ""
+          
+          # Replace contributors section in release body
+          if new_contributors_section:
+              new_body = re.sub(r'## Contributors\n.*?(?=\n## |$)', new_contributors_section, release_body, flags=re.DOTALL)
+          else:
+              # Remove the entire contributors section
+              new_body = re.sub(r'\n## Contributors\n.*?(?=\n## |$)', '', release_body, flags=re.DOTALL)
+          
+          # Update the draft release
+          url = f"https://api.github.com/repos/{repo}/releases/{draft_release_id}"
+          data = json.dumps({"body": new_body}).encode('utf-8')
+          
+          req = urllib.request.Request(url, data=data, method='PATCH')
+          req.add_header('Authorization', f'token {token}')
+          req.add_header('Accept', 'application/vnd.github.v3+json')
+          req.add_header('Content-Type', 'application/json')
+          
+          try:
+              with urllib.request.urlopen(req) as response:
+                  print("Successfully updated draft release with filtered contributors")
+          except Exception as e:
+              print(f"Error updating release: {e}", file=sys.stderr)
+              sys.exit(1)
+          PYTHON_SCRIPT
