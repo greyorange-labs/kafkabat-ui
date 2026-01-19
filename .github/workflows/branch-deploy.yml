@@ -3,10 +3,6 @@ name: "Feature Testing: Build and Push Docker Image"
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch name to checkout'
-        required: true
-        type: string
       commit_hash:
         description: 'Commit hash (full or short - first 7 chars will be used)'
         required: true
@@ -26,17 +22,16 @@ jobs:
           ref: ${{ inputs.commit_hash }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get branch tag and repo name
+      - name: Get tag and repo name
         id: extract_info
         run: |
           # Use first 7 characters of commit hash for tag
           commit_short="${INPUT_COMMIT_HASH:0:7}"
-          tag="branch-${INPUT_BRANCH//\//-}-${commit_short}"
+          tag="commit-${commit_short}"
           echo "tag=${tag}" >> $GITHUB_OUTPUT
           repo_name=$(basename ${{ github.repository }})
           echo "repo_name=${repo_name}" >> $GITHUB_OUTPUT
         env:
-          INPUT_BRANCH: ${{ inputs.branch }}
           INPUT_COMMIT_HASH: ${{ inputs.commit_hash }}
 
       - name: Set up JDK
