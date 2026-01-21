@@ -24,56 +24,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # infered from @v4
 
-      - name: Create release-drafter config
-        run: |
-          mkdir -p .github
-          cat > .github/release-drafter.yml << 'EOF'
-          name-template: 'Release $TAG_NAME'
-          tag-template: '$TAG_NAME'
-          template: |
-            ## Changes
-            $CHANGES
-            
-          
-          exclude-labels:
-            - 'scope/infra'
-            - 'scope/QA'
-            - 'scope/AQA'
-            - 'type/dependencies'
-            - 'type/chore'
-            - 'type/documentation'
-            - 'type/refactor'
-          
-          categories:
-            - title: '🚩 Breaking Changes'
-              labels:
-                - 'impact/changelog'
-          
-            - title: '⚙️Features'
-              labels:
-                - 'type/feature'
-          
-            - title: '🪛Enhancements'
-              labels:
-                - 'type/enhancement'
-          
-            - title: '🔨Bug Fixes'
-              labels:
-                - 'type/bug'
-          
-            - title: 'Security'
-              labels:
-                - 'type/security'
-          
-            - title: '⚠️Noteworthy changes'
-              labels:
-                - 'impact/changelog'
-          
-          change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
-          EOF
-
       - uses: release-drafter/release-drafter@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          config-name: release-drafter.yml
+          config-name: release_drafter_config.yaml
